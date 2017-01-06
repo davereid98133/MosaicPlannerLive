@@ -28,11 +28,13 @@ import wx
 import numpy as np
 import wx.lib.intctrl
 import faulthandler
+
 from pyqtgraph.Qt import QtCore, QtGui
 from tifffile import imsave
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PIL import Image
+from zro import RemoteObject
 
 import LiveMode
 from PositionList import posList
@@ -84,6 +86,15 @@ def write_slice_metadata(filename, ch, xpos, ypos, zpos, meta_dict):
     f.write("XPositions\tYPositions\tFocusPositions\n")
     f.write("%s\t%s\t%s\n" %(xpos, ypos, zpos))
 
+class RemoteInterface(RemoteObject):
+    def __init__(self, rep_port)
+        super(RemoteInterface, self).__init__(rep_port=rep_port)
+        print "opening Remote Interace on port:{}".format(rep_port)
+        self.incomingCmd = "none"
+
+    def remoteCommand(self, incomingCmd):
+        print "incomingCmd:{}".format(incomingCmd)
+        self.incomingCmd = incomingCmd        
 
 class MosaicToolbar(NavBarImproved):
     """A custom toolbar which adds buttons and to interact with a MosaicPanel
@@ -308,6 +319,12 @@ class MosaicPanel(FigureCanvas):
         FigureCanvas.__init__(self, parent, -1, self.figure, **kwargs)
         self.canvas = self.figure.canvas
 
+        # set up the remote interface
+        self.interface = RemoteInterface(rep_port=7777)
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self._check_sock)
+        self.timer.start(200)
+
         #format the appearance
         self.figure.set_facecolor((1, 1, 1))
         self.figure.set_edgecolor((1, 1, 1))
@@ -420,6 +437,9 @@ class MosaicPanel(FigureCanvas):
         self.canvas.mpl_connect('button_press_event', self.on_press)
         self.canvas.mpl_connect('button_release_event', self.on_release)
         self.canvas.mpl_connect('key_press_event', self.on_key)
+
+    def _check_sock(self):
+        self.interface.check_rep()
 
     def askMultiribbons(self):
         dlg = wx.MessageDialog(self,message = "Are you imaging multiple ribbons?",style = wx.YES|wx.NO)
@@ -854,32 +874,35 @@ class MosaicPanel(FigureCanvas):
         #loop over positions
         for i,pos in enumerate(self.posList.slicePositions):
             if pos.activated:
-                if not goahead:
-                    break
-                if not self.imgSrc.mmc.isContinuousFocusEnabled():
-                    print "autofocus not enabled when moving between sections.. "
-                    goahead=False
-                    break
-                (goahead, skip) = self.progress.Update(i*numFrames,'section %d of %d'%(i,numSections-1))
-                #turn on autofocus
-                self.ResetPiezo()
-                current_z = self.imgSrc.get_z()
-                if pos.frameList is None:
-                    self.multiDacq(outdir,chrom_correction,pos.x,pos.y,current_z,i,hold_focus=hold_focus)
+                if (self.interface.incomingCmd == "PAUSE"): #check to see if the acquisition is paused remotely
+                    print "Acquisition Remotely Paused...."
                 else:
-                    for j,fpos in enumerate(pos.frameList.slicePositions):
-                        if not goahead:
-                            print "breaking out!"
-                            break
-                        if not self.imgSrc.mmc.isContinuousFocusEnabled():
-                            print "autofocus no longer enabled while moving between frames.. quiting"
-                            goahead = False
-                            break
-                        self.multiDacq(outdir,chrom_correction,fpos.x,fpos.y,current_z,i,j,hold_focus)
-                        self.ResetPiezo()
-                        (goahead, skip)=self.progress.Update((i*numFrames) + j+1,'section %d of %d, frame %d'%(i,numSections-1,j))
+                    if not goahead:
+                        break
+                    if not self.imgSrc.mmc.isContinuousFocusEnabled():
+                        print "autofocus not enabled when moving between sections.. "
+                        goahead=False
+                        break
+                    (goahead, skip) = self.progress.Update(i*numFrames,'section %d of %d'%(i,numSections-1))
+                    #turn on autofocus
+                    self.ResetPiezo()
+                    current_z = self.imgSrc.get_z()
+                    if pos.frameList is None:
+                        self.multiDacq(outdir,chrom_correction,pos.x,pos.y,current_z,i,hold_focus=hold_focus)
+                    else:
+                        for j,fpos in enumerate(pos.frameList.slicePositions):
+                            if not goahead:
+                                print "breaking out!"
+                                break
+                            if not self.imgSrc.mmc.isContinuousFocusEnabled():
+                                print "autofocus no longer enabled while moving between frames.. quiting"
+                                goahead = False
+                                break
+                            self.multiDacq(outdir,chrom_correction,fpos.x,fpos.y,current_z,i,j,hold_focus)
+                            self.ResetPiezo()
+                            (goahead, skip)=self.progress.Update((i*numFrames) + j+1,'section %d of %d, frame %d'%(i,numSections-1,j))
 
-                wx.Yield()
+                    wx.Yield()
         if not goahead:
             print "acquisition stopped prematurely"
             print "section %d"%(i)
