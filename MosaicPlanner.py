@@ -872,11 +872,9 @@ class MosaicPanel(FigureCanvas):
 
         goahead = True
         #loop over positions
-        for i,pos in enumerate(self.posList.slicePositions):
-            if pos.activated:
-                if (self.interface.incomingCmd == "PAUSE"): #check to see if the acquisition is paused remotely
-                    print "Acquisition Remotely Paused...."
-                else:
+        while (self.interface.incomingCmd != "PAUSE"): #check to see if the acquisition is paused remotely
+            for i,pos in enumerate(self.posList.slicePositions):
+                if pos.activated:
                     if not goahead:
                         break
                     if not self.imgSrc.mmc.isContinuousFocusEnabled():
