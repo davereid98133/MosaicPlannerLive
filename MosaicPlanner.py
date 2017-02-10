@@ -87,7 +87,7 @@ def write_slice_metadata(filename, ch, xpos, ypos, zpos, meta_dict):
     f.write("%s\t%s\t%s\n" %(xpos, ypos, zpos))
 
 class RemoteInterface(RemoteObject):
-    def __init__(self, rep_port)
+    def __init__(self, rep_port, parent):
         super(RemoteInterface, self).__init__(rep_port=rep_port)
         print "opening Remote Interace on port:{}".format(rep_port)
         self.incomingCmd = "none"
@@ -320,10 +320,14 @@ class MosaicPanel(FigureCanvas):
         self.canvas = self.figure.canvas
 
         # set up the remote interface
-        self.interface = RemoteInterface(rep_port=7777)
-        self.timer = QtCore.QTimer()
-        self.timer.timeout.connect(self._check_sock)
-        self.timer.start(200)
+        self.interface = RemoteInterface(rep_port=7777, parent=self)
+        self.timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self._check_sock, self.timer)
+        self.timer.Start(200)
+
+        # self.timer = QtCore.QTimer()
+        # self.timer.timeout.connect(self._check_sock)
+        # self.timer.start(200)
 
         #format the appearance
         self.figure.set_facecolor((1, 1, 1))
@@ -438,8 +442,8 @@ class MosaicPanel(FigureCanvas):
         self.canvas.mpl_connect('button_release_event', self.on_release)
         self.canvas.mpl_connect('key_press_event', self.on_key)
 
-    def _check_sock(self):
-        self.interface.check_rep()
+    def _check_sock(self, event):
+        self.interface._check_rep()
 
     def askMultiribbons(self):
         dlg = wx.MessageDialog(self,message = "Are you imaging multiple ribbons?",style = wx.YES|wx.NO)
@@ -550,6 +554,7 @@ class MosaicPanel(FigureCanvas):
             # currZ=self.imgSrc.get_z()
             # presentZ = currZ
             for z_index, zplane in enumerate(zplanes_to_visit):
+                z = zplane
                 for k,ch in enumerate(self.channel_settings.channels):
                     #print datetime.datetime.now().time()," start channel",ch, " zplane", zplane
                     prot_name=self.channel_settings.prot_names[ch]
@@ -562,6 +567,8 @@ class MosaicPanel(FigureCanvas):
                             if not z == presentZ:
                                 self.imgSrc.set_z(z)
                                 presentZ = z
+                        # else:
+                        #     z = current_z
                         self.imgSrc.set_exposure(self.channel_settings.exposure_times[ch])
                         self.imgSrc.set_channel(ch)
                         #t2 = time.clock()*1000
@@ -872,35 +879,43 @@ class MosaicPanel(FigureCanvas):
 
         goahead = True
         #loop over positions
-        while (self.interface.incomingCmd != "PAUSE"): #check to see if the acquisition is paused remotely
-            for i,pos in enumerate(self.posList.slicePositions):
-                if pos.activated:
-                    if not goahead:
-                        break
-                    if not self.imgSrc.mmc.isContinuousFocusEnabled():
-                        print "autofocus not enabled when moving between sections.. "
-                        goahead=False
-                        break
-                    (goahead, skip) = self.progress.Update(i*numFrames,'section %d of %d'%(i,numSections-1))
-                    #turn on autofocus
-                    self.ResetPiezo()
-                    current_z = self.imgSrc.get_z()
-                    if pos.frameList is None:
-                        self.multiDacq(outdir,chrom_correction,pos.x,pos.y,current_z,i,hold_focus=hold_focus)
-                    else:
-                        for j,fpos in enumerate(pos.frameList.slicePositions):
-                            if not goahead:
-                                print "breaking out!"
-                                break
-                            if not self.imgSrc.mmc.isContinuousFocusEnabled():
-                                print "autofocus no longer enabled while moving between frames.. quiting"
-                                goahead = False
-                                break
-                            self.multiDacq(outdir,chrom_correction,fpos.x,fpos.y,current_z,i,j,hold_focus)
-                            self.ResetPiezo()
-                            (goahead, skip)=self.progress.Update((i*numFrames) + j+1,'section %d of %d, frame %d'%(i,numSections-1,j))
+        #while (self.interface.incomingCmd != "PAUSE"): #check to see if the acquisition is paused remotely
+        for i,pos in enumerate(self.posList.slicePositions):
+            if pos.activated:
+                if not goahead:
+                    break
+                if not self.imgSrc.mmc.isContinuousFocusEnabled():
+                    print "autofocus not enabled when moving between sections.. "
+                    goahead=False
+                    break
+                (goahead, skip) = self.progress.Update(i*numFrames,'section %d of %d'%(i,numSections-1))
+                #turn on autofocus
+                self.ResetPiezo()
+                current_z = self.imgSrc.get_z()
+                if pos.frameList is None:
+                    self.multiDacq(outdir,chrom_correction,pos.x,pos.y,current_z,i,hold_focus=hold_focus)
+                else:
+                    for j,fpos in enumerate(pos.frameList.slicePositions):
+                        if not goahead:
+                            print "breaking out!"
+                            break
+                        if not self.imgSrc.mmc.isContinuousFocusEnabled():
+                            print "autofocus no longer enabled while moving between frames.. quiting"
+                            goahead = False
+                            break
+                        self.multiDacq(outdir,chrom_correction,fpos.x,fpos.y,current_z,i,j,hold_focus)
+                        self.ResetPiezo()
+                        (goahead, skip)=self.progress.Update((i*numFrames) + j+1,'section %d of %d, frame %d'%(i,numSections-1,j))
+                        #======================================================
+                        if self.interface.incomingCmd == "PAUSE":
+                            while self.interface.incomingCmd == "PAUSE":
+                                self._check_sock(True)
+                                #time.sleep(0.1)
+                                wx.Yield()
+                        #======================================================
+                wx.Yield()
+                #import pdb; pdb.set_trace()
 
-                    wx.Yield()
         if not goahead:
             print "acquisition stopped prematurely"
             print "section %d"%(i)
