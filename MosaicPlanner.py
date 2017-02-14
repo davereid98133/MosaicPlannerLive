@@ -90,11 +90,20 @@ class RemoteInterface(RemoteObject):
     def __init__(self, rep_port, parent):
         super(RemoteInterface, self).__init__(rep_port=rep_port)
         print "opening Remote Interace on port:{}".format(rep_port)
-        self.incomingCmd = "none"
+        self.parent = parent
+        self.pause = False
 
-    def remoteCommand(self, incomingCmd):
-        print "incomingCmd:{}".format(incomingCmd)
-        self.incomingCmd = incomingCmd        
+    def set_pause(self):
+        if self.pause is True:
+            self.pause = False
+        else:
+            self.pause = True
+
+    def returnStagePosition()
+        print "getting stage position..."
+        stagePosition = self.parent.getStagePosition()
+        print "stagePosition:{}".format(stagePosition)        
+        return stagePosition
 
 class MosaicToolbar(NavBarImproved):
     """A custom toolbar which adds buttons and to interact with a MosaicPanel
@@ -665,7 +674,9 @@ class MosaicPanel(FigureCanvas):
                     chrom_correction = True
         return numchan,chrom_correction
 
-
+    def getStagePosition(self):
+        stagePosition = self.imgSrc.get_xy()
+        return stagePosition
 
     def summarize_autofocus_settings(self):
         auto_sleep = self.cfg['Mosaic Planner']['autofocus_sleep']
@@ -879,7 +890,7 @@ class MosaicPanel(FigureCanvas):
 
         goahead = True
         #loop over positions
-        #while (self.interface.incomingCmd != "PAUSE"): #check to see if the acquisition is paused remotely
+
         for i,pos in enumerate(self.posList.slicePositions):
             if pos.activated:
                 if not goahead:
@@ -907,9 +918,10 @@ class MosaicPanel(FigureCanvas):
                         self.ResetPiezo()
                         (goahead, skip)=self.progress.Update((i*numFrames) + j+1,'section %d of %d, frame %d'%(i,numSections-1,j))
                         #======================================================
-                        if self.interface.incomingCmd == "PAUSE":
-                            while self.interface.incomingCmd == "PAUSE":
+                        if self.interface.pause == True:
+                            while self.interface.pause == True:
                                 self._check_sock(True)
+                                (goahead, skip)=self.progress.Update((i*numFrames) + j+1,'REMOTELY PAUSED -- section %d of %d, frame %d'%(i,numSections-1,j))
                                 #time.sleep(0.1)
                                 wx.Yield()
                         #======================================================
