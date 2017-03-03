@@ -1,6 +1,5 @@
 from PyQt4 import QtGui, QtCore
 from zro import RemoteObject
-from random import randint
 
 class RemoteInterface(RemoteObject):
     def __init__(self, rep_port, parent):
@@ -9,11 +8,14 @@ class RemoteInterface(RemoteObject):
         self.parent = parent
         self.pause = False
 
-    def returnStagePosition(self):
+    def getStagePosition(self):
         print "getting stage position..."
-        (x, y) = self.parent.getStagePosition()
-        self.parent.pause_line_edit.setText("stage:" + str((x,y)))        
-        return (x,y)
+        currentStagePosition = self.parent.getStagePosition()
+        self.parent.pause_line_edit.setText("X:" + str(currentStagePosition[0]) + "Y:" + str(currentStagePosition[1]))        
+
+    def setStagePosition(self, incomingStagePosition):
+        print "setting new stage position to x:{}, y:{}".format(incomingStagePosition[0], incomingStagePosition[1])
+        self.parent.setStagePosition(incomingStagePosition[0], incomingStagePosition[1])
 
     def set_pause(self):
         if self.pause is True:
@@ -31,8 +33,8 @@ class MyGui(QtGui.QMainWindow):
         self.pause_line_edit = QtGui.QLineEdit(self)
         self.interface = RemoteInterface(rep_port=7777, parent=self)
 
-        self.randomXPos = 20
-        self.randomYPos = 50
+        self.stagePositionX = 0
+        self.stagePositionY = 0
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self._check_sock)
@@ -44,11 +46,13 @@ class MyGui(QtGui.QMainWindow):
         #print("TEST")
 
     def getStagePosition(self):
-        self.randomXPos = randint(0, 100)
-        self.randomYPos = randint(0, 100)
+        stagePosition = [self.stagePositionX, self.stagePositionY]
+        return stagePosition
 
-        # newStagePosition = [self.randomXPos, self.randomYPos]
-        return self.randomXPos, self.randomYPos
+    def setStagePosition(self, newXPosition, newYPosition):
+        self.stagePositionX = newXPosition
+        self.stagePositionY = newYPosition
+        print "stage Position updated"
 
 def main():
     app = QtGui.QApplication([])
