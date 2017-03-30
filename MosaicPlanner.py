@@ -93,14 +93,20 @@ class RemoteInterface(RemoteObject):
         self.parent = parent
         self.pause = False
 
-    def set_pause(self):
+    def toggle_pause(self):
         if self.pause is True:
             self.pause = False
         else:
             self.pause = True
+        #import pdb; pdb.set_trace()
 
-    def getStagePosition()
+    def _check_rep(self):
+        #import pdb; pdb.set_trace()
+        super(RemoteInterface, self)._check_rep()
+
+    def getStagePosition(self):
         print "Getting stage position..."
+        #import pdb; pdb.set_trace()
         stagePosition = self.parent.getStagePosition()
         print "StagePosition:{}".format(stagePosition)        
         return stagePosition
