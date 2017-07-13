@@ -17,6 +17,177 @@
 # 
 #===============================================================================
 import wx
+import os
+import json
+
+class DirectorySettings():
+
+    def __init__(self,Sample_ID = None, Ribbon_ID = None, Session_ID = None,Map_num= None,Slot_num = None,default_path = None ):
+
+        self.default_path = default_path
+        self.Sample_ID = Sample_ID
+        self.Ribbon_ID = Ribbon_ID
+        self.Session_ID = Session_ID
+        self.Slot_num = Slot_num
+        self.Map_num = Map_num
+
+
+
+    def save_settings(self,cfg):
+        cfg['Directories']['Sample_ID'] = self.Sample_ID
+        cfg['Directories']['Ribbon_ID'] = self.Ribbon_ID
+        cfg['Directories']['Session_ID'] = self.Session_ID
+        cfg['Directories']['Map_num'] = self.Map_num
+        cfg['Directories']['Default_Path'] = self.default_path
+        cfg['Directories']['Slot_num'] = self.Slot_num
+        cfg.write()
+
+    def load_settings(self,cfg):
+        self.default_path = cfg['Directories']['Default_Path']
+        self.Sample_ID = cfg['Directories']['Sample_ID']
+        self.Ribbon_ID = cfg['Directories']['Ribbon_ID']
+        self.Session_ID = cfg['Directories']['Session_ID']
+        self.Map_num = cfg['Directories']['Map_num']
+        self.Slot_num = cfg['Directories']['Slot_num']
+
+    def create_directory(self,cfg,kind):
+        root = self.default_path
+        print 'root:', root
+        if kind == 'map':
+            map_folder = os.path.join(root,self.Sample_ID,'raw','map','Ribbon%04d'%self.Ribbon_ID,'map%01d'%self.Map_num)
+            if not os.path.exists(map_folder):
+                os.makedirs(map_folder)
+                cfg['MosaicPlanner']['default_imagepath'] = map_folder
+                # return map_folder
+            else:
+                # return map_folder
+                cfg['MosaicPlanner']['default_imagepath'] = map_folder
+        elif kind == 'data':
+            data_folder = os.path.join(root,self.Sample_ID,'raw','data','Ribbon%04d'%self.Ribbon_ID,'session%02d'%self.Session_ID)
+            if not os.path.exists(data_folder):
+                os.makedirs(data_folder)
+                return data_folder
+            else:
+                dlg = wx.MessageDialog(None,message = "Path already exists! Do you wish to continue?",caption = "Directory Warning",style = wx.YES|wx.NO)
+                button_pressed = dlg.ShowModal()
+                if button_pressed == wx.ID_YES:
+                    return data_folder
+                elif button_pressed == wx.ID_NO:
+                    box = wx.MessageDialog(None,message = 'Aborting Acquisition')
+                    box.ShowModal()
+                    box.Destroy()
+                    return None
+        elif kind == 'multi_map':
+            map_folder = os.path.join(root,self.Sample_ID,'raw','map','multi_ribbon_round','map%02d'%self.Map_num)
+            if not os.path.exists(map_folder):
+                os.makedirs(map_folder)
+                cfg['MosaicPlanner']['default_imagepath'] = map_folder
+            else:
+                cfg['MosaicPlanner']['default_imagepath'] = map_folder
+        else:
+            dlg = wx.MessageBox(self,caption = 'Error',message = "Directory must be either \'map\' or \'data\' \n Aborting Acquisition")
+            return None
+
+
+class RibbonNumberDialog(wx.Dialog):
+    def __init__(self,parent,id,style,title = "Enter Number of Ribbons"):
+        wx.Dialog.__init__(self,parent,id,title,style = wx.DEFAULT_DIALOG_STYLE, size = (200,75))
+        vbox = wx.BoxSizer(wx.VERTICAL)
+
+        self.RibbonNum_txt = wx.StaticText(self,label = "Number of Ribbons:")
+        self.RibbonNum_IntCtrl = wx.lib.intctrl.IntCtrl(self,value = 1, min = 1, max = None, allow_none = False)
+
+        ok_button = wx.Button(self,wx.ID_OK,'OK')
+        cancel_button = wx.Button(self,wx.ID_CANCEL,'Cancel')
+        hbox1 = wx.BoxSizer(wx.HORIZONTAL)
+        hbox2 = wx.BoxSizer(wx.HORIZONTAL)
+        hbox1.Add(self.RibbonNum_txt)
+        hbox1.Add(self.RibbonNum_IntCtrl)
+        hbox2.Add(ok_button)
+        hbox2.Add(cancel_button)
+        vbox.Add(hbox1)
+        vbox.Add(hbox2)
+        self.SetSizer(vbox)
+
+    def GetValue(self):
+        val = self.RibbonNum_IntCtrl.GetValue()
+        return val
+
+
+
+
+class ChangeDirectorySettings(wx.Dialog):
+    def __init__(self,parent, id,style, title="Enter Sample Information",settings = DirectorySettings()):
+        wx.Dialog.__init__(self, parent, id, title, style= wx.DEFAULT_DIALOG_STYLE, size= (420,-1),)
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        # self.settings = settings
+
+        self.RootDir_txt = wx.StaticText(self,label = 'Data Directory')
+        self.RootDir_Ctrl = wx.DirPickerCtrl(self,path=settings.default_path)
+
+        self.SampleID_txt = wx.StaticText(self, label = "Sample ID:")
+        self.SampleID_Ctrl = wx.TextCtrl(self,value=settings.Sample_ID)
+
+        self.Ribbon_txt = wx.StaticText(self, label= "Ribbon Number:")
+        self.RibbonInt_Ctrl = wx.lib.intctrl.IntCtrl(self,value = settings.Ribbon_ID, min = 0, max = None, allow_none = False)
+
+        self.Session_txt = wx.StaticText(self,label = "Session Number:")
+        self.SessionInt_Ctrl = wx.lib.intctrl.IntCtrl(self,value = settings.Session_ID, min=0, max = None, allow_none = False)
+
+        self.Map_txt = wx.StaticText(self,label = "Map Number:")
+        self.MapInt_Ctrl = wx.lib.intctrl.IntCtrl(self,value = settings.Map_num, min = 0 , max = None, allow_none = False)
+
+        self.Slot_txt = wx.StaticText(self,label = "Slot Number:")
+        self.SlotInt_Ctrl = wx.lib.intctrl.IntCtrl(self, value = settings.Slot_num, min = 0, max = 7, allow_none = False)
+
+
+        ok_button = wx.Button(self,wx.ID_OK,'OK')
+        cancel_button = wx.Button(self,wx.ID_CANCEL,'Cancel')
+        hbox = wx.BoxSizer(wx.HORIZONTAL)
+        hbox1 = wx.BoxSizer(wx.HORIZONTAL)
+        hbox2 = wx.BoxSizer(wx.HORIZONTAL)
+        hbox3 = wx.BoxSizer(wx.HORIZONTAL)
+        hbox4 = wx.BoxSizer(wx.HORIZONTAL)
+        hbox5 = wx.BoxSizer(wx.HORIZONTAL)
+        hbox6 = wx.BoxSizer(wx.HORIZONTAL)
+        hbox.Add(self.RootDir_txt)
+        hbox.Add(self.RootDir_Ctrl)
+        hbox1.Add(self.SampleID_txt)
+        hbox1.Add(self.SampleID_Ctrl)
+        hbox2.Add(self.Ribbon_txt)
+        hbox2.Add(self.RibbonInt_Ctrl)
+        hbox3.Add(self.Session_txt)
+        hbox3.Add(self.SessionInt_Ctrl)
+        hbox4.Add(self.Map_txt)
+        hbox4.Add(self.MapInt_Ctrl)
+        hbox5.Add(self.Slot_txt)
+        hbox5.Add(self.SlotInt_Ctrl)
+        hbox6.Add(ok_button)
+        hbox6.Add(cancel_button)
+        vbox.Add(hbox)
+        vbox.Add(hbox1)
+        vbox.Add(hbox2)
+        vbox.Add(hbox3)
+        vbox.Add(hbox4)
+        vbox.Add(hbox5)
+        vbox.Add(hbox6)
+        self.SetSizer(vbox)
+
+    def get_settings(self):
+
+        Ribbon_ID = self.RibbonInt_Ctrl.GetValue() # insures the ribbon ID that is passed is of the form Ribbon0000
+        Session_ID = self.SessionInt_Ctrl.GetValue()
+        Sample_ID = self.SampleID_Ctrl.GetValue()
+        Map_num = self.MapInt_Ctrl.GetValue()
+        Slot_num = self.SlotInt_Ctrl.GetValue()
+        Default_Path = self.RootDir_Ctrl.GetPath()
+        return DirectorySettings(Sample_ID,Ribbon_ID,Session_ID,Map_num,Slot_num,Default_Path)
+
+
+
+
+
+
 
 class ZstackSettings():
 
@@ -26,14 +197,18 @@ class ZstackSettings():
         self.zstack_number = int(zstack_number + (1 - zstack_number % 2))
 
     def save_settings(self,cfg):
-        cfg.WriteFloat('zstack_delta/',self.zstack_delta)
-        cfg.WriteBool('zstack_flag/',self.zstack_flag)
-        cfg.WriteInt('zstack_number/',self.zstack_number)
+        cfg['ZStackSettings']['zstack_delta']=self.zstack_delta
+        cfg['ZStackSettings']['zstack_flag']=self.zstack_flag
+        cfg['ZStackSettings']['zstack_number']=self.zstack_number
+        cfg.write()
 
     def load_settings(self,cfg):
-        self.zstack_delta = cfg.ReadFloat('zstack_delta/')
-        self.zstack_flag = cfg.ReadBool('zstack_flag/')
-        self.zstack_number = cfg.ReadInt('zstack_number/')
+        self.zstack_delta = cfg['ZStackSettings']['zstack_delta']
+        self.zstack_flag = cfg['ZStackSettings']['zstack_flag']
+        self.zstack_number = cfg['ZStackSettings']['zstack_number']
+        print self.zstack_number,type(self.zstack_number)
+        self.zstack_number = int(self.zstack_number + (1 - self.zstack_number % 2))
+
 
 class ChangeZstackSettings(wx.Dialog):
     def __init__(self, parent, id, title, settings,style):
@@ -81,6 +256,17 @@ class ChangeZstackSettings(wx.Dialog):
         delta       = self.zdeltaFloatCtrl.GetValue()
         return ZstackSettings(zstack_delta = delta,zstack_number = stacksize,zstack_flag = flag)
 
+
+
+
+
+
+
+
+
+
+
+
 class CorrSettings():
 
     def __init__(self,window=100,delta=75,skip = 3,corr_thresh = .3):
@@ -91,16 +277,16 @@ class CorrSettings():
         self.corr_thresh  = corr_thresh
         
     def save_settings(self,cfg):
-        cfg.WriteInt('CorrTool_window',self.window)
-        cfg.WriteInt('CorrTool_delta',self.delta)
-        cfg.WriteInt('CorrTool_skip',self.skip)
-        cfg.WriteFloat('CorrTool_corr_thresh',self.corr_thresh)
-    
+        cfg['CorrSettings']['CorrTool_window']=self.window
+        cfg['CorrSettings']['CorrTool_delta']=self.delta
+        cfg['CorrSettings']['CorrTool_skip']=self.skip
+        cfg['CorrSettings']['CorrTool_corr_thresh']=self.corr_thresh
+        cfg.write()
     def load_settings(self,cfg):
-        self.window=cfg.ReadInt('CorrTool_window',100)
-        self.delta=cfg.ReadInt('CorrTool_delta',75)
-        self.skip = cfg.ReadInt('CorrTool_skip',3)
-        self.corr_thresh = cfg.ReadFloat('CorrTool_corr_thresh',.3)
+        self.window=cfg['CorrSettings']['CorrTool_window']
+        self.delta=cfg['CorrSettings']['CorrTool_delta']
+        self.skip = cfg['CorrSettings']['CorrTool_skip']
+        self.corr_thresh = cfg['CorrSettings']['CorrTool_corr_thresh']
 
 class ChangeCorrSettings(wx.Dialog):
     def __init__(self, parent, id, title, settings,style):
@@ -167,20 +353,21 @@ class SiftSettings():
         self.inlier_thresh = inlier_thresh
         
     def save_settings(self,cfg):
-        cfg.WriteInt('numFeatures',self.numFeatures)
-        cfg.WriteInt('inlier_thresh',self.inlier_thresh)
-        cfg.WriteFloat('contrastThreshold',self.contrastThreshold)
-    
+        cfg['SiftSettings','numFeatures']=self.numFeatures
+        cfg['SiftSettings','inlier_thresh']=self.inlier_thresh
+        cfg['SiftSettings','contrastThreshold']=self.contrastThreshold
+        cfg.write()
+
     def load_settings(self,cfg):
-        self.numFeatures=cfg.ReadInt('numFeatures',1000)
-        self.contrastThreshold=cfg.ReadFloat('contrastThreshold',0.5)
-        self.inlier_thresh = cfg.ReadInt('inlier_thresh',12)
+        self.numFeatures=cfg['SiftSettings']['numFeatures']
+        self.contrastThreshold=cfg['SiftSettings']['contrastThreshold']
+        self.inlier_thresh = cfg['SiftSettings']['inlier_thresh']
         
 class ChangeSiftSettings(wx.Dialog):
     def __init__(self, parent, id, title, settings,style):
-        wx.Dialog.__init__(self, parent, id, title,style=wx.DEFAULT_DIALOG_STYLE, size=(420, -1))   
+        wx.Dialog.__init__(self, parent, id, title,style=wx.DEFAULT_DIALOG_STYLE, size=(420, -1))
         vbox =wx.BoxSizer(wx.VERTICAL)
-        
+
         self.settings=settings
         self.numFeatureTxt=wx.StaticText(self,label="max features")
         self.numFeatureIntCtrl = wx.lib.intctrl.IntCtrl( self, value=settings.numFeatures,size=(50,-1))
@@ -188,34 +375,34 @@ class ChangeSiftSettings(wx.Dialog):
         self.inlierThreshIntCtrl = wx.lib.intctrl.IntCtrl( self, value=settings.inlier_thresh,size=(50,-1))
 
         self.contrastThresholdTxt = wx.StaticText(self,label="contrast threshold")
-        self.contrastThresholdFloatCtrl = wx.lib.agw.floatspin.FloatSpin(self, 
+        self.contrastThresholdFloatCtrl = wx.lib.agw.floatspin.FloatSpin(self,
                                        value=settings.contrastThreshold,
                                        min_val=0,
                                        max_val=12.0,
                                        increment=.01,
                                        digits=2,
                                        name='',
-                                       size=(95,-1)) 
+                                       size=(95,-1))
         hbox1 = wx.BoxSizer(wx.HORIZONTAL)
         hbox2 = wx.BoxSizer(wx.HORIZONTAL)
-        
+
         hbox1.Add(self.numFeatureTxt)
         hbox1.Add(self.numFeatureIntCtrl)
         hbox1.Add(self.inlierThreshIntCtrl)
-        
+
         hbox2.Add(self.contrastThresholdTxt)
         hbox2.Add(self.contrastThresholdFloatCtrl)
         hbox2.Add(self.inlierThreshTxt)
 
-        
-       
 
-        hbox3 = wx.BoxSizer(wx.HORIZONTAL)      
+
+
+        hbox3 = wx.BoxSizer(wx.HORIZONTAL)
         ok_button = wx.Button(self,wx.ID_OK,'OK')
         cancel_button = wx.Button(self,wx.ID_CANCEL,'Cancel')
         hbox3.Add(ok_button)
         hbox3.Add(cancel_button)
-        
+
         vbox.Add(hbox1)
         vbox.Add(hbox2)
         vbox.Add(hbox3)
@@ -239,25 +426,28 @@ class CameraSettings():
         self.pix_width=pix_width
         self.pix_height=pix_height
     def save_settings(self,cfg):
-        cfg.WriteInt('sensor_height',self.sensor_height)
-        cfg.WriteInt('sensor_width',self.sensor_width)
-        cfg.WriteFloat('pix_width',self.pix_width)
-        cfg.WriteFloat('pix_height',self.pix_height)
+        cfg['Camera_Settings']['sensor_height']=self.sensor_height
+        cfg['Camera_Settings']['sensor_width']=self.sensor_width
+        cfg['Camera_Settings']['pix_width']=self.pix_width
+        cfg['Camera_Settings']['pix_height']=self.pix_height
+        cfg.write()
     def load_settings(self,cfg):
-        self.sensor_height=cfg.ReadInt('sensor_height',1040)
-        self.sensor_width=cfg.ReadInt('sensor_width',1388)
-        self.pix_width=cfg.ReadFloat('pix_width',6.5)
-        self.pix_height=cfg.ReadFloat('pix_height',6.5)
+        self.sensor_height=cfg['Camera_Settings']['sensor_height']
+        self.sensor_width=cfg['Camera_Settings']['sensor_width']
+        self.pix_width=cfg['Camera_Settings']['pix_width']
+        self.pix_height=cfg['Camera_Settings']['pix_height']
 
 class ChannelSettings():
     """simple struct for containing the parameters for the microscope"""
-    def __init__(self,channels,exposure_times=dict([]),zoffsets=dict([]),usechannels=dict([]),prot_names=dict([]),map_chan=None,def_exposure=100,def_offset=0.0,):
+    def __init__(self,channels,exposure_times=dict([]),zoffsets=dict([]),
+                 usechannels=dict([]),prot_names=dict([]),map_chan=None,
+                 def_exposure=100,def_offset=0.0,):
         #def_exposure is default exposure time in msec
        
         
         self.channels= channels
         self.def_exposure=def_exposure
-        self.def_offset=0.0
+        self.def_offset=def_offset
         
         self.exposure_times=exposure_times
         self.zoffsets=zoffsets
@@ -275,26 +465,27 @@ class ChannelSettings():
         
     def save_settings(self,cfg):    
         
-        cfg.Write('map_chan',self.map_chan)
+        cfg['ChannelSettings']['map_chan']=self.map_chan
         for ch in self.channels:
-            cfg.WriteInt('Exposures/'+ch,self.exposure_times[ch])
-            cfg.WriteFloat('ZOffsets/'+ch,self.zoffsets[ch])
-            cfg.WriteBool('UseChannel/'+ch,self.usechannels[ch])
-            cfg.Write('ProteinNames/'+ch,self.prot_names[ch])
-
+            cfg['ChannelSettings']['Exposure_'+ch]=self.exposure_times[ch]
+            cfg['ChannelSettings']['ZOffsets_'+ch]=self.zoffsets[ch]
+            cfg['ChannelSettings']['UseChannel_'+ch]=self.usechannels[ch]
+            cfg['ChannelSettings']['ProteinNames_'+ch]=self.prot_names[ch]
+        cfg.write()
 
     def load_settings(self,cfg):
         for ch in self.channels:
-            self.exposure_times[ch]=cfg.ReadInt('Exposures/'+ch, self.def_exposure)
-            self.zoffsets[ch]=cfg.ReadFloat('ZOffsets/'+ch,self.def_offset)
-            self.usechannels[ch]=cfg.ReadBool('UseChannel/'+ch,True)
-            self.prot_names[ch]=cfg.Read('ProteinNames/'+ch,ch)
-        self.map_chan=str(cfg.Read('map_chan','DAPI'))
+            self.exposure_times[ch]=cfg['ChannelSettings'].get('Exposures_'+ch,self.def_exposure)
+            self.zoffsets[ch]=cfg['ChannelSettings'].get('ZOffsets_'+ch,self.def_offset)
+            self.usechannels[ch]=cfg['ChannelSettings'].get('UseChannel_'+ch,True)
+            self.prot_names[ch]=cfg['ChannelSettings'].get('ProteinNames_'+ch,ch)
+
+        self.map_chan=str(cfg['ChannelSettings']['map_chan'])
 
 class ChangeChannelSettings(wx.Dialog):
     """simple dialog for changing the channel settings"""
     def __init__(self, parent, id, title, settings,style):
-        wx.Dialog.__init__(self, parent, id, title,style=wx.DEFAULT_DIALOG_STYLE, size=(420, -1))
+        wx.Dialog.__init__(self, parent, id, title,style=wx.DEFAULT_DIALOG_STYLE, size=(420, 600))
         
         self.settings=settings
         vbox = wx.BoxSizer(wx.VERTICAL)   
@@ -316,11 +507,17 @@ class ChangeChannelSettings(wx.Dialog):
         self.ExposureCtrls=[]
         self.MapRadCtrls=[]
         self.ZOffCtrls=[]
-        
+        with open('ChannelSettings.json') as protein_file:
+            self.ProteinSelection = json.load(protein_file)
         for ch in settings.channels:
             hbox =wx.BoxSizer(wx.HORIZONTAL)
             Txt=wx.StaticText(self,label=ch)
-            ProtText=wx.TextCtrl(self,value=settings.prot_names[ch])
+            if 'dapi' in ch.lower():
+                ProtComboBox=wx.ComboBox(self,choices=self.ProteinSelection['QuadBand0DAPI'], style = wx.CB_SORT)
+            else:
+                ProtComboBox=wx.ComboBox(self,choices=self.ProteinSelection['Proteins'], style = wx.CB_SORT)
+
+
             ChBox = wx.CheckBox(self)
             ChBox.SetValue(settings.usechannels[ch])
             IntCtrl=wx.lib.intctrl.IntCtrl( self, value=settings.exposure_times[ch],size=(50,-1))
@@ -341,13 +538,13 @@ class ChangeChannelSettings(wx.Dialog):
                 RadBut.SetValue(True)
                 
             gridSizer.Add(Txt,0,flag=wx.ALL|wx.EXPAND,border=5)
-            gridSizer.Add(ProtText,1,flag=wx.ALL|wx.EXPAND,border=5)
+            gridSizer.Add(ProtComboBox,1,flag=wx.ALL|wx.EXPAND,border=5)
             gridSizer.Add(ChBox,0,flag=wx.ALL|wx.EXPAND,border=5)
             gridSizer.Add(IntCtrl,0,border=5)
             gridSizer.Add(RadBut,0,flag=wx.ALL|wx.EXPAND,border=5)
             gridSizer.Add(FloatCtrl,0,flag=wx.ALL|wx.EXPAND,border=5)
             
-            self.ProtNameCtrls.append(ProtText)
+            self.ProtNameCtrls.append(ProtComboBox)
             self.UseCtrls.append(ChBox)
             self.ExposureCtrls.append(IntCtrl)
             self.MapRadCtrls.append(RadBut)
@@ -371,9 +568,16 @@ class ChangeChannelSettings(wx.Dialog):
         usechannels=dict([])
         exposure_times=dict([])
         zoffsets=dict([])
-        
+        print self.settings.channels
         for i,ch in enumerate(self.settings.channels):
             prot_names[ch]=self.ProtNameCtrls[i].GetValue()
+            if (prot_names[ch] not in self.ProteinSelection['QuadBand0DAPI']) and (prot_names[ch] not in self.ProteinSelection['Proteins']):
+               if 'dapi' in prot_names[ch].lower():
+                   self.ProteinSelection['QuadBand0DAPI'].append(prot_names[ch])
+               else:
+                   self.ProteinSelection['Proteins'].append(prot_names[ch])
+               with open('ChannelSettings.json','w') as protein_file:
+                   json.dump(self.ProteinSelection, protein_file)
             usechannels[ch]=self.UseCtrls[i].GetValue()
             exposure_times[ch]=self.ExposureCtrls[i].GetValue()
             if self.MapRadCtrls[i].GetValue():
@@ -402,20 +606,21 @@ class MosaicSettings:
         self.show_frames=show_frames
         self.mag=mag
     def save_settings(self,cfg):
-        cfg.WriteFloat('mosaic_mag',self.mag)
-        cfg.WriteInt('mosaic_mx',self.mx)
-        cfg.WriteInt('mosaic_my',self.my)
-        cfg.WriteInt('mosaic_overlap',self.overlap)
-        cfg.WriteBool('mosaic_show_box',self.show_box)
-        cfg.WriteBool('mosaic_show_frames',self.show_frames)
-        
+        cfg['MosaicSettings']['mosaic_mag']=self.mag
+        cfg['MosaicSettings']['mosaic_mx']=self.mx
+        cfg['MosaicSettings']['mosaic_my']=self.my
+        cfg['MosaicSettings']['mosaic_overlap']=self.overlap
+        cfg['MosaicSettings']['mosaic_show_box']=self.show_box
+        cfg['MosaicSettings']['mosaic_show_frames']=self.show_frames
+        cfg.write()
+
     def load_settings(self,cfg):
-        self.mag=cfg.ReadFloat('mosaic_mag',65.486)
-        self.mx=cfg.ReadInt('mosaic_mx',1)
-        self.my=cfg.ReadInt('mosaic_my',1)
-        self.overlap=cfg.ReadInt('mosaic_overlap',10)
-        self.show_box=cfg.WriteBool('mosaic_show_box',False)
-        self.show_frames=cfg.WriteBool('mosaic_show_frames',False)
+        self.mag=cfg['MosaicSettings']['mosaic_mag']
+        self.mx=cfg['MosaicSettings']['mosaic_mx']
+        self.my=cfg['MosaicSettings']['mosaic_my']
+        self.overlap=cfg['MosaicSettings']['mosaic_overlap']
+        self.show_box=cfg['MosaicSettings']['mosaic_show_box']
+        self.show_frames=cfg['MosaicSettings']['mosaic_show_frames']
         
   
 class ChangeCameraSettings(wx.Dialog):
@@ -505,18 +710,20 @@ class SmartSEMSettings():
         self.Z=Z
         self.WD=WD
     def save_settings(self,cfg):
-        cfg.WriteInt('SEM_mag',self.mag)
-        cfg.WriteFloat('SEM_tilt',self.tilt)
-        cfg.WriteFloat('SEM_rot',self.rot)
-        cfg.WriteFloat('SEM_Z',self.Z)
-        cfg.WriteFloat('SEM_WD',self.WD)
+        cfg['SmartSEMSettings']['SEM_mag']=self.mag
+        cfg['SmartSEMSettings']['SEM_tilt']=self.tilt
+        cfg['SmartSEMSettings']['SEM_rot']=self.rot
+        cfg['SmartSEMSettings']['SEM_Z']=self.Z
+        cfg['SmartSEMSettings']['SEM_WD']=self.WD
+        cfg.write()
+
     def load_settings(self,cfg):
-        self.mag=cfg.ReadInt('SEM_mag',1200)
-        self.tilt=cfg.ReadFloat('SEM_tilt',0.33)
-        self.rot=cfg.ReadFloat('SEM_rot',0)
-        self.Z=cfg.ReadFloat('SEM_Z',0.0125)
-        self.WD=cfg.ReadFloat('SEM_WD',0.00632568)
-        
+        self.mag=cfg['SmartSEMSettings']['SEM_mag']
+        self.tilt=cfg['SmartSEMSettings']['SEM_tilt']
+        self.rot=cfg['SmartSEMSettings']['SEM_rot']
+        self.Z=cfg['SmartSEMSettings']['SEM_Z']
+        self.WD=cfg['SmartSEMSettings']['SEM_WD']
+
 class ChangeSEMSettings(wx.Dialog):
     """simple dialog for edchanging the camera settings"""
     def __init__(self, parent, id, title, settings=SmartSEMSettings()):
@@ -550,4 +757,47 @@ class ChangeSEMSettings(wx.Dialog):
                                      rot=self.rotCtrl.GetValue(),
                                      Z=self.ZCtrl.GetValue(),
                                      WD=self.WDCtrl)
-                                     
+
+class MultiRibbonSettings(wx.Dialog): #MultiRibbons
+    """dialog for setting multiribbon aquisition"""
+    def __init__(self, parent, id, ribbon_number, title, settings,style):
+        wx.Dialog.__init__(self, parent, id, title,style=wx.DEFAULT_DIALOG_STYLE, size=(1000, 300))
+
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        gridSizer=wx.FlexGridSizer(rows=5,cols=3,vgap=5,hgap=5)
+        gridSizer.Add(wx.StaticText(self,id=wx.ID_ANY,label="ribbon#"),border=5)
+        gridSizer.Add(wx.StaticText(self,id=wx.ID_ANY,label="array file"),border=5)
+        gridSizer.Add(wx.StaticText(self,id=wx.ID_ANY,label=" "),border=5)
+
+        self.ribbon_number = ribbon_number
+        self.RibbonFilePath = []
+        for i in range(self.ribbon_number):
+            self.ribbon_label=wx.StaticText(self,id=wx.ID_ANY,label=str(i))
+            self.ribbon_load_button=wx.Button(self,id=wx.ID_ANY,label=" ",name="load button")
+            self.ribbon_filepicker=wx.FilePickerCtrl(self,message='Select an array file',\
+            path="",name='arrayFilePickerCtrl1',\
+            style=wx.FLP_USE_TEXTCTRL, size=wx.Size(800,20),wildcard='*.*')
+            gridSizer.Add(self.ribbon_label,0,wx.EXPAND,border=5)
+            gridSizer.Add(self.ribbon_filepicker,1,wx.EXPAND,border=5)
+            gridSizer.Add(self.ribbon_load_button,0,wx.EXPAND,border=5)
+            self.RibbonFilePath.append(self.ribbon_filepicker)
+
+        hbox = wx.BoxSizer(wx.HORIZONTAL)
+        ok_button = wx.Button(self,wx.ID_OK,'OK')
+        cancel_button = wx.Button(self,wx.ID_CANCEL,'Cancel')
+        hbox.Add(ok_button)
+        hbox.Add(cancel_button)
+
+        vbox.Add(gridSizer)
+        vbox.Add(hbox)
+
+        self.SetSizer(vbox)
+
+    def GetSettings(self):
+        #pathway=dict([])
+        pathway=[]
+        for i in range(self.ribbon_number):
+            #pathway[i]=self.RibbonFilePath[i].GetPath()
+            newpath=self.RibbonFilePath[i].GetPath()
+            pathway.append(newpath)
+        return pathway

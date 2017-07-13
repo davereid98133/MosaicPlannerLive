@@ -5,17 +5,27 @@ import time
 from Rectangle import Rectangle
 import wx
 from retry import retry
+import datetime
+import os
+from MMArduino import MMArduino
 
 class imageSource():
     
-    def __init__(self,configFile,channelGroupName='Channels',use_focus_plane  = False,focus_points=None,transpose_xy = False):
+    def __init__(self,configFile,channelGroupName='Channels',
+                 use_focus_plane  = False, focus_points=None,
+                 transpose_xy = False, logfile='MP_MM.txt',
+                 MasterArduinoPort = None, interframe_time= 10, filtswitch = None):
       #NEED TO IMPLEMENT IF NOT MICROMANAGER
      
         self.configFile=configFile
         self.mmc = MMCorePy.CMMCore() 
         self.mmc.enableStderrLog(False)
         self.mmc.enableDebugLog(True)
-        self.mmc.setPrimaryLogFile('CoreLogProcessSpeed_newfirm.txt')
+        now=datetime.datetime.now()
+        #logfile=now.strftime('%Y-%m-%d_%H:%M:%S_log.txt')
+
+        currpath=os.path.split(os.path.realpath(__file__))[0]
+        self.mmc.setPrimaryLogFile(os.path.join(currpath,logfile))
         self.mmc.loadSystemConfiguration(self.configFile)
        
         self.channelGroupName=channelGroupName
@@ -38,9 +48,30 @@ class imageSource():
         self.use_focus_plane = use_focus_plane
         if use_focus_plane:
             assert (focus_points is not None)
-            self.define_focal_plane(points)
+            self.define_focal_plane(focus_points)
 
+        if MasterArduinoPort is not None:
+            self.masterArduino = MMArduino(port=MasterArduinoPort)
+        else:
+            self.masterArduino = None
+        self.interframe_time = interframe_time
+        self.filtswitch = filtswitch
+
+        if self.filtswitch is not None:
+            #sets filterwheel to empty slot during setup/mapping if wheel is present
+            self.mmc.setConfig('Triggering','Hardware')
+            self.mmc.waitForConfig('Triggering','Hardware')
+            self.mmc.setConfig('Triggering','Hardware')
+            # self.mmc.setProperty(filtswitch,'State','5')
+
+            self.mmc.loadPropertySequence(filtswitch,'State','5')
+            self.mmc.startPropertySequence(filtswitch,'State')
+            self.masterArduino.MoveFilter()
+            self.mmc.stopPropertySequence(filtswitch,'State')
+            self.mmc.setConfig('Triggering','Software')
+            self.mmc.setConfig('Triggering','Software')
         #set the exposure to use
+
     def define_focal_plane(self,points):
         if points.shape[1]>3:
             self.plane_tuple = self.planeFit(points)
@@ -73,6 +104,71 @@ class imageSource():
         b = -d/norm[2]
         return ax,ay,b
 
+    def stop_hardware_triggering(self):
+        self.mmc.stopSequenceAcquisition()
+        self.mmc.setConfig('Triggering','Software')
+        self.mmc.setConfig('Triggering','Software')
+
+    def setup_hardware_triggering(self,channels,exposure_times):
+
+        #set up triggering to "Hardware" to load all the
+        self.mmc.setConfig('Triggering','Hardware')
+        #do it twice to work around bug in Andor Zyla camera's, can't really hurt
+        self.mmc.setConfig('Triggering','Hardware')
+        self.mmc.waitForConfig('Triggering','Hardware')
+
+        #get the first channel config
+        cfg = self.mmc.getConfigData(self.channelGroupName,channels[0])
+        #loop over the properties in this channel
+        for i in range(cfg.size()):
+            #pull out the device and property
+            setting=cfg.getSetting(i)
+            dev = setting.getDeviceLabel()
+            prop = setting.getPropertyName()
+
+            #if its sequencable, then load the sequence
+            if self.mmc.isPropertySequenceable(dev,prop):
+                #set it up for hardware triggering
+                propseq = [self.mmc.getConfigData(self.channelGroupName,channels[k]).getSetting(i).getPropertyValue() for k in range(len(channels))]
+                self.mmc.loadPropertySequence(dev,prop,propseq)
+                self.mmc.startPropertySequence(dev,prop)
+
+            #otherwise then we need it to be constant
+            else:
+                #check that it is constant across channels
+                valuefirst = setting.getPropertyValue()
+                for channel in channels:
+                    thisconfig = self.mmc.getConfigData(self.channelGroupName,channel)
+                    thissetting = thisconfig.getSetting(i)
+                    thisvalue = thissetting.getPropertyValue()
+                    #if its not constant, then we can't hardware trigger this
+                    if thisvalue != valuefirst:
+                        self.mmc.setConfig('Triggering','Software')
+                        self.mmc.waitForConfig('Triggering','Software')
+                        return False
+
+                #set it to that constant state
+                self.mmc.setProperty(dev,prop,valuefirst)
+                self.mmc.waitForDevice(dev)
+        self.masterArduino.setupExposure(exposure_times,self.interframe_time)
+        self.numberHardwareChannels = len(exposure_times)
+        self.mmc.startContinuousSequenceAcquisition(0)
+
+    def startHardwareSequence(self):
+        assert(self.masterArduino is not None)
+        self.masterArduino.startTimedPattern()
+
+    def set_binning(self,bin=1):
+        cam = self.mmc.getCameraDevice()
+        binstring = "%dx%d"%(bin,bin)
+        self.mmc.setProperty(cam,'Binning',binstring)
+
+    def get_binning(self):
+        cam = self.mmc.getCameraDevice()
+        binstring = self.mmc.getProperty(cam,'Binning')
+        (bx,by)=binstring.split('x')
+        return int(bx)
+
     def image_based_autofocus(self,chan=None):
         if chan is not None:
             self.set_channel(chan)
@@ -82,7 +178,10 @@ class imageSource():
     def get_max_pixel_value(self):
         bit_depth=self.mmc.getImageBitDepth()
         return np.power(2,bit_depth)-1
-        
+
+    def get_exposure(self):
+        return self.mmc.getExposure()
+
     def set_exposure(self,exp_msec):
       #NEED TO IMPLEMENT IF NOT MICROMANAGER
         self.mmc.setExposure(exp_msec)
@@ -99,6 +198,7 @@ class imageSource():
     def set_hardware_autofocus_state(self,state):
         if self.has_hardware_autofocus():
             self.mmc.enableContinuousFocus(state)
+            self.mmc.waitForDevice(self.mmc.getAutoFocusDevice())
         
     def has_hardware_autofocus(self):
         #NEED TO IMPLEMENT IF NOT MICROMANAGER
@@ -118,7 +218,18 @@ class imageSource():
         return self.mmc.isContinuousFocusLocked()
         
 
-    
+    def take_hardware_snap(self):
+
+        self.mmc.startSequenceAcquisition(self.numberHardwareChannels,0,True)
+        images = []
+        while self.mmc.isSequenceRunning():
+            if self.mmc.getRemainingImageCount()>0:
+                images.append(self.mmc.popNextImage())
+        for i in range(self.numberHardwareChannels-len(images)):
+            images.append(self.mmc.popNextImage())
+        return images
+
+
     def take_image(self,x,y):
         #do not need to re-implement
         #moves scope to x,y - focus scope - snap picture
@@ -126,9 +237,10 @@ class imageSource():
 
         #print "is continuous focus enabled",self.mmc.isContinuousFocusEnabled()
         #print "is continuous focus locked",self.mmc.isContinuousFocusLocked()
-        if not self.mmc.isContinuousFocusLocked():
-            print 'CRISP is not locked'
-            wx.MessageBox('CRISP is not locked, Help me',)
+
+        if not self.mmc.isContinuousFocusEnabled():
+            print 'autofocus not enabled'
+            wx.MessageBox('autofocus not enabled, Help me',)
             return
 
 
@@ -146,8 +258,10 @@ class imageSource():
                 failure=False
                 while not self.is_hardware_autofocus_done():
                     attempts+=1
+                    time.sleep(.1)
                     if attempts>100:
                         failure=True
+                        print("focus score is ",self.mmc.getCurrentFocusScore(),'breaking out')
                         break
                         print "not autofocusing correctly.. giving up after 10 seconds"
                 if failure:
@@ -233,7 +347,14 @@ class imageSource():
     def get_pixel_size(self):
         #NEED TO IMPLEMENT IF NOT MICROMANAGER
         return self.mmc.getPixelSizeUm()
-    
+
+    def get_image(self):
+        while self.mmc.getRemainingImageCount()==0:
+            time.sleep(.001)
+        data = self.mmc.popNextImage()
+        return self.flip_image(data)
+
+
     def get_frame_size_um(self):
         (sensor_width,sensor_height)=self.get_sensor_size()
         pixsize = self.get_pixel_size()
@@ -282,9 +403,11 @@ class imageSource():
             print "we failed on 5 attempts to snap properly... freakout!"
             return None
         data = self.mmc.getImage()
+        data = self.flip_image(data)
+        return data
 
 
-
+    def flip_image(self,data):
 
         (flipx,flipy,trans) = self.get_image_flip()
         if trans:
@@ -340,4 +463,57 @@ class imageSource():
         flip_y = int(self.mmc.getProperty(cam,"TransposeMirrorY"))==1
         trans = int(self.mmc.getProperty(cam,"TransposeXY"))==1
 
-        return (flip_x,flip_y,trans) 
+        return (flip_x,flip_y,trans)
+
+    def move_safe_and_focus(self,x,y): #MultiRibbons
+        #lower objective, move the stage to position x,y
+        focus_stage=self.mmc.getFocusDevice()
+        #self.mmc.setRelativePosition(focus_stage,-3000.0)
+        for j in range(300): #use small z steps to lower objective slowly
+            self.mmc.setRelativePosition(-10.0)
+            self.mmc.waitForDevice(focus_stage)
+            time.sleep(0.2)
+        self.mmc.waitForDevice(focus_stage)
+        time.sleep(1)
+        self.set_xy_new(x,y)
+        time.sleep(40)
+        stg=self.mmc.getXYStageDevice()
+        self.mmc.waitForDevice(stg)
+        #self.mmc.setRelativePosition(focus_stage,2700.0)
+        for j in range(310): #use small z steps to raise objective slowly
+            self.mmc.setRelativePosition(10.0)
+            self.mmc.waitForDevice(focus_stage)
+            time.sleep(0.2)
+        self.mmc.setRelativePosition(-200.0)
+        self.mmc.waitForDevice(focus_stage)
+        i = 0
+        while not self.mmc.isContinuousFocusLocked():
+            self.mmc.setRelativePosition(focus_stage,20.0)
+            self.mmc.waitForDevice(focus_stage)
+            self.mmc.enableContinuousFocus(True)
+            self.mmc.waitForDevice(self.mmc.getAutoFocusDevice())
+            time.sleep(1)
+            i = i+1
+            if i==20:
+                break
+
+    def set_xy_new(self,x,y,use_focus_plane=False): #MultiRibbons
+        # modified version of set_xy to be called by move_safe_and_focus with removed self.mmc.waitForDevice(stg)
+        # to avoid error when waiting time exceeds 5s
+        flipx,flipy = self.get_xy_flip()
+
+        if use_focus_plane:
+            z  = self.get_focal_z(x,y)
+            self.set_z(z)
+        if self.transpose_xy:
+            xt = x
+            x = y
+            y = xt
+        #if flipx==1:
+        #    x = -x
+        #if flipy == 1:
+        #    y = -y
+
+        stg=self.mmc.getXYStageDevice()
+        self.mmc.setXYPosition(stg,x,y)
+        #self.mmc.waitForDevice(stg)
