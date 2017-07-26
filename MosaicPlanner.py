@@ -79,15 +79,12 @@ class RemoteInterface(RemoteObject):
             self.pause = False
         else:
             self.pause = True
-        #import pdb; pdb.set_trace()
 
     def _check_rep(self):
-        #import pdb; pdb.set_trace()
         super(RemoteInterface, self)._check_rep()
 
     def getStagePosition(self):
         print "Getting stage position..."
-        #import pdb; pdb.set_trace()
         stagePosition = self.parent.getStagePosition()
         print "StagePosition:{}".format(stagePosition)
         return stagePosition
@@ -96,10 +93,41 @@ class RemoteInterface(RemoteObject):
         print "setting new stage position to x:{}, y:{}".format(incomingStagePosition[0], incomingStagePosition[1])
         self.parent.setStagePosition(incomingStagePosition[0], incomingStagePosition[1])
 
+    def setZPosition(self, incomingZPosition):
+        print "setting Z Position to z:{}".format(incomingZPosition)
+        self.parent.setZPosition(incomingZPosition)
 
+    def getZPosition(self):
+        print "getting Z position..."
+        zPos = self.parent.getZPosition()
+        print "Z Position:{}".format(zPos)
+        return zPos
 
+    def getRemainingImagingTime(self):
+        print "getting remaining imaging time..."
+        remainingTime = self.parent.getRemainingImagingTime()
+        print "remainingTime:{}".format(remainingTime)
+        return remainingTime
 
+    def remoteSavePositionListJSON(self, filename, trans=None):
+        print "saving position list to {}".format(filename)
+        self.parent.remoteSavePositionListJSON(filename, trans=trans)
 
+    def remoteLoadPositionListJSON(self, filename):
+        print "loading position list from {}".format(filename)
+        self.parent.remoteLoadPositionListJSON(filename)
+
+    def startAcq(self):
+        print "Starting Acquisition..."
+        # STUB:  Put the appropriate parent function for starting acquisitin here        
+        # success = self.parent.startAcquisition()
+        # return success
+
+    def stopAcq(self):
+        print "Stopping Acquisition..."
+        # STUB:  Put the appropriate parent function for stopping acquisitin here
+        # success = self.parent.stopAcquisition()
+        # return success
 
 class MosaicToolbar(NavBarImproved):
     """A custom toolbar which adds buttons and to interact with a MosaicPanel
@@ -356,7 +384,6 @@ class MosaicPanel(FigureCanvas):
         self.Bind(wx.EVT_TIMER, self._check_sock, self.timer)
         self.timer.Start(200)
 
-
         #format the appearance
         self.figure.set_facecolor((1, 1, 1))
         self.figure.set_edgecolor((1, 1, 1))
@@ -542,7 +569,6 @@ class MosaicPanel(FigureCanvas):
         self.mosaicImage=MosaicImage(self.subplot,self.posone_plot,self.postwo_plot,self.corrplot,self.imgSrc,rootPath,figure=self.figure)
         self.on_crop_tool()
         self.draw()
-
 
     def write_slice_metadata(self,filename,ch,xpos,ypos,zpos):
         f = open(filename, 'w')
@@ -1929,6 +1955,26 @@ class MosaicPanel(FigureCanvas):
 
     def setStagePosition(self, newXPos, newYPos):
         self.imgSrc.move_stage(newXPos, newYPos)
+
+    def setZPosition(self, newZPos):
+        self.imgSrc.set_z(newZPos)
+
+    def getZPosition(self):
+        zPosition = self.imgSrc.get_z()
+        return zPosition
+
+    def getRemainingImagingTime(self):
+        remainingTime = wx.PD_REMAINING_TIME
+        return remainingTime
+
+    def remoteSavePositionListJSON(self, fileName, trans=None):
+        if trans:
+            self.mosaicCanvas.posList.save_position_list_JSON(self.array_filepicker.GetPath(),trans=self.Transform)
+        else:
+            self.mosaicCanvas.posList.save_position_list_JSON(self.array_filepicker.GetPath(),trans=None)
+
+    def remoteLoadPositionListJSON(self, filename):
+        self.mosaicCanvas.posList.add_from_file_JSON(filename)
 
 class ZVISelectFrame(wx.Frame):
     """class extending wx.Frame for highest level handling of GUI components """
